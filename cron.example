@@ -1,0 +1,2 @@
+# Runs every hour
+0 * * * * cd ~/pp/electricity-schedule/ && npm run start
