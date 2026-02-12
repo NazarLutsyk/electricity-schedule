@@ -1,0 +1,55 @@
+name: Schedule check
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: "*/5 * * * *"
+  workflow_dispatch: # Allow manual run
+
+concurrency:
+  group: schedule
+  cancel-in-progress: false # Wait for the previous run instead of cancelling
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to push state.json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run schedule check
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bun run start
+
+      - name: Commit and push state if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          if git diff --staged --quiet; then
+            echo "No state change, nothing to commit"
+          else
+            STATE_MSG="chore: update schedule state"
+            LAST_MSG=$(git log -1 --pretty=%s)
+            LAST_EMAIL=$(git log -1 --pretty=%ae)
+            if [ "$LAST_MSG" = "$STATE_MSG" ] && [ "$LAST_EMAIL" = "github-actions[bot]@users.noreply.github.com" ]; then
+              git commit --amend --no-edit
+              git push --force-with-lease
+            else
+              git commit -m "$STATE_MSG"
+              git push
+            fi
+          fi
